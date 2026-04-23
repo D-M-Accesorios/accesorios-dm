@@ -1,0 +1,85 @@
+# ACCESORIOS DM
+
+Proyecto académico de ecommerce distribuido para la empresa **ACCESORIOS DM**, orientado a la gestión de catálogo, inventario, carrito, pagos y seguridad mediante una arquitectura basada en microservicios.
+
+## Descripción general
+El sistema fue diseñado para separar responsabilidades en distintos servicios, permitiendo escalabilidad, mantenimiento y despliegue independiente por módulos.
+
+## Arquitectura del proyecto
+La solución está compuesta por los siguientes repositorios:
+
+- **accesorios-dm-frontend**: interfaz web en Angular
+- **accesorios-dm-api-gateway**: punto de entrada único para los microservicios
+- **accesorios-dm-inventory-service**: gestión de catálogo, productos, categorías y stock
+- **accesorios-dm-payment-service**: base del flujo de carrito, órdenes y pagos
+- **accesorios-dm-security-service**: autenticación, autorización y roles
+- **PostgreSQL**: persistencia de datos
+
+## Flujo general
+Usuario → Frontend → API Gateway → Microservicio → Base de datos
+
+## Tecnologías utilizadas
+- Angular
+- Spring Boot
+- Node.js / Express
+- PostgreSQL
+- Docker
+- Docker Compose
+- Maven
+- Git y GitHub
+
+## Puertos utilizados
+- Frontend: **4200**
+- API Gateway: **8080**
+- Inventory Service: **8081**
+- Payment Service: **8082**
+- PostgreSQL: **5432**
+
+## Estado actual del proyecto
+
+### HU-01
+Arquitectura base e integración inicial implementada entre frontend, API Gateway e inventory-service.
+
+### HU-02
+Catálogo e inventario integrados entre frontend, gateway e inventory-service.
+
+### HU-03
+Base del servicio de carrito y pagos pendiente de integración completa.
+
+### HU-04
+Seguridad y autenticación pendiente de implementación completa.
+
+## Estrategia de ramas
+Se manejó una estrategia de ambientes basada en:
+
+`feature/* -> develop -> qa -> release -> main`
+
+## Cómo levantar el proyecto
+
+### Repositorios necesarios para la base actual
+Clonar los siguientes repositorios en una misma carpeta raíz:
+
+- accesorios-dm
+- accesorios-dm-frontend
+- accesorios-dm-api-gateway
+- accesorios-dm-inventory-service
+
+### Repositorios para siguientes iteraciones
+- accesorios-dm-payment-service
+- accesorios-dm-security-service
+
+### Requisitos
+- Docker
+- Docker Compose
+
+### Verificaciones
+- Frontend: `http://localhost:4200`
+- Gateway health: `http://localhost:8080/actuator/health`
+- Catálogo por gateway: `http://localhost:8080/api/inventory/products`
+
+## Documentación adicional
+La documentación del proyecto se encuentra en la carpeta `docs/`, incluyendo:
+- backlog
+- ADR
+- evidencias
+- documentación del sprint
