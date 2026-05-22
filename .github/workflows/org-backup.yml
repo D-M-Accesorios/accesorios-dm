@@ -1,0 +1,145 @@
+name: Organization Repository Backup
+
+on:
+  schedule:
+    - cron: '0 3 * * *'   # diariamente a las 03:00 UTC
+  workflow_dispatch:
+    inputs:
+      notify_on_success:
+        description: 'Enviar notificación Slack aunque no haya errores'
+        type: boolean
+        default: false
+
+jobs:
+  backup:
+    name: backup-all-repos
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: List all organization repositories
+        id: list-repos
+        env:
+          GH_TOKEN: ${{ secrets.ORG_BACKUP_TOKEN }}
+          ORG: ${{ vars.GITHUB_ORG }}
+        run: |
+          echo "Listando repositorios de la organización: ${ORG}"
+          gh api "orgs/${ORG}/repos?per_page=100&type=all" \
+            --paginate \
+            --jq '.[].clone_url' > repos.txt
+
+          REPO_COUNT=$(wc -l < repos.txt)
+          echo "Repositorios encontrados: ${REPO_COUNT}"
+          echo "repo_count=${REPO_COUNT}" >> "$GITHUB_OUTPUT"
+
+      - name: Clone all repositories (mirror)
+        env:
+          GH_TOKEN: ${{ secrets.ORG_BACKUP_TOKEN }}
+        run: |
+          mkdir -p backups
+          FAILED=0
+
+          while IFS= read -r repo_url; do
+            repo_name=$(basename "$repo_url" .git)
+            echo "→ Clonando mirror: ${repo_name}"
+
+            # Reemplazar https:// con credenciales en la URL
+            auth_url="${repo_url/https:\/\//https:\/\/x-access-token:${GH_TOKEN}@}"
+
+            if git clone --mirror "$auth_url" "backups/${repo_name}.git" 2>/dev/null; then
+              echo "  ✓ ${repo_name}"
+            else
+              echo "  ✗ Error clonando ${repo_name}" >&2
+              FAILED=$((FAILED + 1))
+            fi
+          done < repos.txt
+
+          echo "failed_count=${FAILED}" >> "$GITHUB_OUTPUT"
+          if [ "$FAILED" -gt 0 ]; then
+            echo "⚠️  ${FAILED} repositorio(s) fallaron al clonar."
+          fi
+        id: clone
+
+      - name: Create timestamped archive
+        id: archive
+        run: |
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          ARCHIVE="dm-accesorios-backup-${TIMESTAMP}.tar.gz"
+          tar -czf "$ARCHIVE" backups/
+          SIZE=$(du -sh "$ARCHIVE" | cut -f1)
+          echo "Archivo creado: ${ARCHIVE} (${SIZE})"
+          echo "archive_name=${ARCHIVE}" >> "$GITHUB_OUTPUT"
+          echo "archive_size=${SIZE}" >> "$GITHUB_OUTPUT"
+
+      # ─── Descomenta y configura el destino de backup que uses ───────────────
+
+      # Opción A: AWS S3
+      # - name: Upload to S3
+      #   uses: aws-actions/configure-aws-credentials@v4
+      #   with:
+      #     aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+      #     aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      #     aws-region:            ${{ vars.AWS_REGION }}
+      # - run: |
+      #     aws s3 cp "${{ steps.archive.outputs.archive_name }}" \
+      #       "s3://${{ vars.BACKUP_BUCKET }}/github-org/"
+      #     # Retención: mantener solo los últimos 30 días
+      #     aws s3 ls "s3://${{ vars.BACKUP_BUCKET }}/github-org/" \
+      #       | sort | head -n -30 \
+      #       | awk '{print $4}' \
+      #       | xargs -I{} aws s3 rm "s3://${{ vars.BACKUP_BUCKET }}/github-org/{}"
+
+      # Opción B: Google Cloud Storage
+      # - uses: google-github-actions/auth@v2
+      #   with:
+      #     credentials_json: ${{ secrets.GCP_SA_KEY }}
+      # - uses: google-github-actions/upload-cloud-storage@v2
+      #   with:
+      #     path: ${{ steps.archive.outputs.archive_name }}
+      #     destination: ${{ vars.GCS_BACKUP_BUCKET }}/github-org/
+
+      # ────────────────────────────────────────────────────────────────────────
+
+      - name: Upload archive as workflow artifact (fallback de 90 días)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.archive.outputs.archive_name }}
+          path: ${{ steps.archive.outputs.archive_name }}
+          retention-days: 90
+
+      - name: Notify Slack — success
+        if: |
+          success() &&
+          (inputs.notify_on_success == true || steps.clone.outputs.failed_count != '0')
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "✅ Backup diario completado — D-M-Accesorios",
+              "attachments": [{
+                "color": "${{ steps.clone.outputs.failed_count != '0' && 'warning' || 'good' }}",
+                "fields": [
+                  {"title": "Repositorios", "value": "${{ steps.list-repos.outputs.repo_count }}", "short": true},
+                  {"title": "Fallidos", "value": "${{ steps.clone.outputs.failed_count }}", "short": true},
+                  {"title": "Tamaño archivo", "value": "${{ steps.archive.outputs.archive_size }}", "short": true},
+                  {"title": "Archivo", "value": "${{ steps.archive.outputs.archive_name }}", "short": false}
+                ]
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Notify Slack — failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "🚨 FALLO en backup diario de repositorios — D-M-Accesorios",
+              "attachments": [{
+                "color": "danger",
+                "text": "El workflow de backup falló. Revisar: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

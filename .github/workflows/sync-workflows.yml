@@ -1,0 +1,131 @@
+name: Sync Shared Workflows to All Repos
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'shared-workflows/**'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Modo simulación (no escribe en los repos)'
+        type: boolean
+        default: false
+      target_repo:
+        description: 'Repo específico (vacío = todos)'
+        type: string
+        default: ''
+
+jobs:
+  sync:
+    name: sync-workflows
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sync validate-branch-flow.yml to all service repos
+        env:
+          GH_TOKEN: ${{ secrets.ORG_ADMIN_TOKEN }}
+          ORG: ${{ vars.GITHUB_ORG }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          TARGET_REPO: ${{ inputs.target_repo }}
+        run: |
+          # Repositorios de servicios que reciben los workflows compartidos
+          ALL_REPOS=(
+            "accesorios-dm-api-gateway"
+            "accesorios-dm-database"
+            "accesorios-dm-inventory-service"
+            "accesorios-dm-payment-service"
+            "accesorios-dm-security-service"
+            "accesorios-dm-frontend"
+          )
+
+          # Si se especificó un repo concreto, solo sincronizar ese
+          if [ -n "$TARGET_REPO" ]; then
+            REPOS=("$TARGET_REPO")
+          else
+            REPOS=("${ALL_REPOS[@]}")
+          fi
+
+          WORKFLOW_SOURCE="shared-workflows/validate-branch-flow.yml"
+          WORKFLOW_DEST=".github/workflows/validate-branch-flow.yml"
+
+          if [ ! -f "$WORKFLOW_SOURCE" ]; then
+            echo "❌ Archivo fuente no encontrado: ${WORKFLOW_SOURCE}"
+            echo "   Asegúrate de que existe shared-workflows/validate-branch-flow.yml"
+            exit 1
+          fi
+
+          CONTENT=$(base64 < "$WORKFLOW_SOURCE" | tr -d '\n')
+          UPDATED=0
+          SKIPPED=0
+          FAILED=0
+
+          for repo in "${REPOS[@]}"; do
+            echo ""
+            echo "→ Procesando: ${repo}"
+
+            # Obtener SHA del archivo actual si existe
+            CURRENT=$(gh api "repos/${ORG}/${repo}/contents/${WORKFLOW_DEST}" 2>/dev/null || echo "NOT_FOUND")
+
+            if echo "$CURRENT" | grep -q '"sha"'; then
+              SHA=$(echo "$CURRENT" | python3 -c "import sys,json; print(json.load(sys.stdin)['sha'])")
+              CURRENT_CONTENT=$(echo "$CURRENT" | python3 -c "import sys,json; print(json.load(sys.stdin)['content'])" | tr -d '\n')
+
+              if [ "$CURRENT_CONTENT" = "$CONTENT" ]; then
+                echo "  ⏭  Sin cambios — saltando ${repo}"
+                SKIPPED=$((SKIPPED + 1))
+                continue
+              fi
+
+              if [ "$DRY_RUN" = "true" ]; then
+                echo "  [DRY RUN] Actualizaría ${WORKFLOW_DEST} en ${repo}"
+                UPDATED=$((UPDATED + 1))
+                continue
+              fi
+
+              gh api "repos/${ORG}/${repo}/contents/${WORKFLOW_DEST}" \
+                -X PUT \
+                -f message="ci: sync validate-branch-flow from governance [skip ci]" \
+                -f content="$CONTENT" \
+                -f sha="$SHA" > /dev/null && {
+                  echo "  ✓ Actualizado: ${repo}"
+                  UPDATED=$((UPDATED + 1))
+                } || {
+                  echo "  ✗ Error actualizando: ${repo}"
+                  FAILED=$((FAILED + 1))
+                }
+            else
+              if [ "$DRY_RUN" = "true" ]; then
+                echo "  [DRY RUN] Crearía ${WORKFLOW_DEST} en ${repo}"
+                UPDATED=$((UPDATED + 1))
+                continue
+              fi
+
+              gh api "repos/${ORG}/${repo}/contents/${WORKFLOW_DEST}" \
+                -X PUT \
+                -f message="ci: add validate-branch-flow from governance [skip ci]" \
+                -f content="$CONTENT" > /dev/null && {
+                  echo "  ✓ Creado: ${repo}"
+                  UPDATED=$((UPDATED + 1))
+                } || {
+                  echo "  ✗ Error creando en: ${repo}"
+                  FAILED=$((FAILED + 1))
+                }
+            fi
+          done
+
+          echo ""
+          echo "═══════════════════════════════════"
+          echo "  Resumen de sincronización"
+          echo "═══════════════════════════════════"
+          echo "  Actualizados : ${UPDATED}"
+          echo "  Sin cambios  : ${SKIPPED}"
+          echo "  Fallidos     : ${FAILED}"
+          echo "═══════════════════════════════════"
+
+          if [ "$FAILED" -gt 0 ]; then
+            exit 1
+          fi

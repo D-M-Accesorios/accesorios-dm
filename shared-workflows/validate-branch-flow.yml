@@ -1,0 +1,221 @@
+name: Validate Branch Flow
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+    branches:
+      - develop
+      - qa
+      - main
+
+permissions:
+  pull-requests: write
+
+jobs:
+  validate-branch-flow:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Evaluate branch flow
+        id: evaluate
+        env:
+          BASE: ${{ github.base_ref }}
+          HEAD: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+
+          # Patrón obligatorio para ramas de feature: debe iniciar con HU- en mayúsculas
+          HU_PATTERN='^HU-[A-Z0-9]'
+
+          VALID=true
+          TITLE=""
+          BODY=""
+
+          case "$BASE" in
+            develop)
+              if echo "$HEAD" | grep -qE "$HU_PATTERN"; then
+                echo "✅ Flujo válido: ${HEAD} → develop"
+              else
+                VALID=false
+                TITLE="❌ Flujo de ramas inválido — \`${HEAD}\` no puede hacer PR a \`develop\`"
+                BODY=$(cat <<MARKDOWN
+## ❌ Flujo de ramas inválido
+
+Este Pull Request intenta fusionar \`${HEAD}\` → \`develop\`, lo cual **no está permitido**.
+
+### ¿Por qué fue bloqueado?
+
+La rama origen \`${HEAD}\` no sigue el formato requerido para integrarse a \`develop\`.
+
+### Formato obligatorio para ramas de feature
+
+\`\`\`
+HU-{AMBIENTE}-{INICIALES}-{Descripcion}
+\`\`\`
+
+**Ejemplos válidos:**
+- \`HU-DEV-JSA-01-nueva-funcionalidad\`
+- \`HU-DEV-SALB_10\`
+- \`HU-DEV-DMC-FE-01-componente-login\`
+
+### Flujos permitidos en este repositorio
+
+| Origen | Destino | Estado |
+|--------|---------|--------|
+| \`HU-*\` | \`develop\` | ✅ Permitido |
+| \`develop\` | \`qa\` | ✅ Permitido |
+| \`qa\` | \`main\` | ✅ Permitido |
+| Cualquier otro | Cualquier otro | ❌ Bloqueado |
+
+### Acción requerida
+
+1. Renombra tu rama siguiendo el formato \`HU-{AMBIENTE}-{INICIALES}-{Descripcion}\`
+2. Actualiza la rama base de este PR a \`develop\`
+3. Vuelve a abrir el PR
+
+> 🔒 Este check es requerido. El merge permanecerá bloqueado hasta corregir el flujo.
+MARKDOWN
+)
+              fi
+              ;;
+
+            qa)
+              if [ "$HEAD" = "develop" ]; then
+                echo "✅ Flujo válido: develop → qa"
+              else
+                VALID=false
+                TITLE="❌ Flujo de ramas inválido — solo \`develop\` puede hacer PR a \`qa\`"
+                BODY=$(cat <<MARKDOWN
+## ❌ Flujo de ramas inválido
+
+Este Pull Request intenta fusionar \`${HEAD}\` → \`qa\`, lo cual **no está permitido**.
+
+### Flujo correcto
+
+\`\`\`
+HU-* → develop → qa → main
+\`\`\`
+
+Para promover cambios a \`qa\` debes:
+1. Asegurarte de que tus cambios están fusionados en \`develop\`
+2. Crear un PR desde \`develop\` → \`qa\`
+
+### Flujos permitidos
+
+| Origen | Destino | Estado |
+|--------|---------|--------|
+| \`HU-*\` | \`develop\` | ✅ Permitido |
+| \`develop\` | \`qa\` | ✅ Permitido |
+| \`qa\` | \`main\` | ✅ Permitido |
+| \`${HEAD}\` | \`qa\` | ❌ Bloqueado |
+
+> 🔒 El merge permanecerá bloqueado hasta que el PR sea \`develop\` → \`qa\`.
+MARKDOWN
+)
+              fi
+              ;;
+
+            main)
+              if [ "$HEAD" = "qa" ]; then
+                echo "✅ Flujo válido: qa → main"
+              else
+                VALID=false
+                TITLE="❌ Flujo de ramas inválido — solo \`qa\` puede hacer PR a \`main\`"
+                BODY=$(cat <<MARKDOWN
+## ❌ Flujo de ramas inválido
+
+Este Pull Request intenta fusionar \`${HEAD}\` → \`main\`, lo cual **no está permitido**.
+
+### Flujo correcto
+
+\`\`\`
+HU-* → develop → qa → main
+\`\`\`
+
+Para hacer un release a \`main\` debes:
+1. Asegurarte de que los cambios están probados en \`qa\`
+2. Crear un PR desde \`qa\` → \`main\`
+
+### Flujos permitidos
+
+| Origen | Destino | Estado |
+|--------|---------|--------|
+| \`HU-*\` | \`develop\` | ✅ Permitido |
+| \`develop\` | \`qa\` | ✅ Permitido |
+| \`qa\` | \`main\` | ✅ Permitido |
+| \`${HEAD}\` | \`main\` | ❌ Bloqueado |
+
+> 🔒 El merge permanecerá bloqueado hasta que el PR sea \`qa\` → \`main\`.
+MARKDOWN
+)
+              fi
+              ;;
+
+            *)
+              echo "ℹ️  Rama base '${BASE}' no protegida — flujo no validado."
+              ;;
+          esac
+
+          echo "valid=${VALID}" >> "$GITHUB_OUTPUT"
+          {
+            echo "title<<__EOF__"
+            printf "%s" "$TITLE"
+            echo ""
+            echo "__EOF__"
+            echo "body<<__EOF__"
+            printf "%s" "$BODY"
+            echo ""
+            echo "__EOF__"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Comment on PR if flow is invalid
+        if: steps.evaluate.outputs.valid == 'false'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = `${{ steps.evaluate.outputs.title }}`;
+            const body  = `${{ steps.evaluate.outputs.body }}`;
+            const fullBody = `${title}\n\n${body}`;
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const marker = '<!-- branch-flow-bot -->';
+            const existing = comments.find(c =>
+              c.user.type === 'Bot' && c.body.includes('Flujo de ramas inválido')
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner:      context.repo.owner,
+                repo:       context.repo.repo,
+                comment_id: existing.id,
+                body:       fullBody + `\n\n${marker}`,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner:        context.repo.owner,
+                repo:         context.repo.repo,
+                issue_number: context.issue.number,
+                body:         fullBody + `\n\n${marker}`,
+              });
+            }
+
+      - name: Fail job if flow is invalid
+        if: steps.evaluate.outputs.valid == 'false'
+        run: |
+          echo ""
+          echo "=============================================="
+          echo "  MERGE BLOQUEADO — FLUJO DE RAMAS INVÁLIDO"
+          echo "=============================================="
+          echo "  Origen : ${{ github.head_ref }}"
+          echo "  Destino: ${{ github.base_ref }}"
+          echo ""
+          echo "  Flujos permitidos:"
+          echo "    HU-*    → develop"
+          echo "    develop → qa"
+          echo "    qa      → main"
+          echo "=============================================="
+          exit 1

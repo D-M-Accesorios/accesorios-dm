@@ -1,0 +1,107 @@
+name: Organization Audit Monitor
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'   # cada 30 minutos
+  workflow_dispatch:
+
+jobs:
+  check-destructive-events:
+    name: audit-check-destructive-events
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Fetch recent audit log events
+        id: audit
+        env:
+          GH_TOKEN: ${{ secrets.ORG_AUDIT_TOKEN }}
+          ORG: ${{ vars.GITHUB_ORG }}
+        run: |
+          # Ventana de tiempo: últimos 35 minutos (cubre overlap entre ejecuciones)
+          WINDOW_SECONDS=2100
+          NOW=$(date +%s)
+          SINCE=$(( NOW - WINDOW_SECONDS ))
+          SINCE_MS=$(( SINCE * 1000 ))
+
+          echo "Consultando audit log — eventos destructivos desde: $(date -d @${SINCE} 2>/dev/null || date -r ${SINCE})"
+
+          # repo.destroy = eliminación de repositorio
+          # repo.transfer = transferencia de repositorio a otra org
+          # repo.archived = archivado de repositorio
+          # org.remove_member = remoción de miembro con acceso a repos
+          EVENTS=""
+          for action in repo.destroy repo.transfer repo.archived org.remove_member; do
+            result=$(gh api \
+              "orgs/${ORG}/audit-log?phrase=action:${action}&per_page=25" \
+              --jq "[.[] | select(.created_at > ${SINCE_MS})]" 2>/dev/null || echo "[]")
+            if [ "$result" != "[]" ] && [ -n "$result" ]; then
+              EVENTS="${EVENTS}${result}"
+            fi
+          done
+
+          if [ -n "$EVENTS" ] && [ "$EVENTS" != "[]" ]; then
+            echo "⚠️  Eventos destructivos detectados en los últimos 35 minutos!"
+            echo "$EVENTS" | python3 -m json.tool 2>/dev/null || echo "$EVENTS"
+            echo "has_events=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "events_json<<__EOF__"
+              echo "$EVENTS"
+              echo "__EOF__"
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "✓ Sin eventos destructivos en el período analizado."
+            echo "has_events=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Alert on Slack — repository deleted or transferred
+        if: steps.audit.outputs.has_events == 'true'
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "🚨 ALERTA DE SEGURIDAD — Evento destructivo detectado en D-M-Accesorios",
+              "attachments": [{
+                "color": "danger",
+                "title": "Acción requerida inmediatamente",
+                "text": "Se detectaron uno o más eventos de alto riesgo en la organización GitHub.\n\nVerificar el audit log completo en: https://github.com/organizations/${{ vars.GITHUB_ORG }}/settings/audit-log\n\nWorkflow de detección: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+                "footer": "audit-monitor | D-M-Accesorios"
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Open security incident issue
+        if: steps.audit.outputs.has_events == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TIMESTAMP=$(date -u '+%Y-%m-%d %H:%M UTC')
+          gh issue create \
+            --repo "${{ github.repository }}" \
+            --title "🚨 [INCIDENTE] Evento destructivo detectado — ${TIMESTAMP}" \
+            --label "security,incident" \
+            --body "## Alerta automática — Audit Monitor
+
+          **Detectado:** ${TIMESTAMP}
+          **Workflow:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          ### Eventos detectados
+
+          \`\`\`json
+          ${{ steps.audit.outputs.events_json }}
+          \`\`\`
+
+          ### Acciones inmediatas
+
+          - [ ] Verificar el audit log completo en GitHub: https://github.com/organizations/${{ vars.GITHUB_ORG }}/settings/audit-log
+          - [ ] Confirmar si la acción fue autorizada
+          - [ ] Si fue no autorizada: revocar acceso del actor inmediatamente
+          - [ ] Si fue eliminación de repo: iniciar restauración desde backup
+          - [ ] Documentar el incidente y resolución en este issue
+
+          ### Restauración de backup
+
+          Los backups están disponibles en los artifacts del workflow \`org-backup\`.
+          Ver: ${{ github.server_url }}/${{ github.repository }}/actions/workflows/org-backup.yml
+          " 2>/dev/null || echo "Issue ya creado o sin permisos para crear issues."
