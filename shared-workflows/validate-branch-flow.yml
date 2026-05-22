@@ -9,7 +9,7 @@ on:
       - main
 
 permissions:
-  pull-requests: write
+  pull-requests: read
 
 jobs:
   validate-branch-flow:
@@ -169,6 +169,7 @@ MARKDOWN
 
       - name: Comment on PR if flow is invalid
         if: steps.evaluate.outputs.valid == 'false'
+        continue-on-error: true   # falla silenciosa si la org tiene write permissions deshabilitado
         uses: actions/github-script@v7
         with:
           script: |
