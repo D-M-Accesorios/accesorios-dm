@@ -87,7 +87,7 @@ apply_protection() {
       }
     ]
   },
-  "enforce_admins": true,
+  "enforce_admins": false,
   "required_pull_request_reviews": {
     "dismiss_stale_reviews": true,
     "require_code_owner_reviews": ${require_codeowners},
