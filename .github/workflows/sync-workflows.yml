@@ -49,83 +49,100 @@ jobs:
             REPOS=("${ALL_REPOS[@]}")
           fi
 
-          WORKFLOW_SOURCE="shared-workflows/validate-branch-flow.yml"
-          WORKFLOW_DEST=".github/workflows/validate-branch-flow.yml"
+          # Workflows a sincronizar en todos los repos de servicio
+          WORKFLOWS=(
+            "validate-branch-flow.yml"
+            "validate-commits.yml"
+          )
 
-          if [ ! -f "$WORKFLOW_SOURCE" ]; then
-            echo "❌ Archivo fuente no encontrado: ${WORKFLOW_SOURCE}"
-            echo "   Asegúrate de que existe shared-workflows/validate-branch-flow.yml"
-            exit 1
-          fi
+          TOTAL_UPDATED=0
+          TOTAL_SKIPPED=0
+          TOTAL_FAILED=0
 
-          CONTENT=$(base64 < "$WORKFLOW_SOURCE" | tr -d '\n')
-          UPDATED=0
-          SKIPPED=0
-          FAILED=0
+          for workflow in "${WORKFLOWS[@]}"; do
+            WORKFLOW_SOURCE="shared-workflows/${workflow}"
+            WORKFLOW_DEST=".github/workflows/${workflow}"
 
-          for repo in "${REPOS[@]}"; do
-            echo ""
-            echo "→ Procesando: ${repo}"
-
-            # Obtener SHA del archivo actual si existe
-            CURRENT=$(gh api "repos/${ORG}/${repo}/contents/${WORKFLOW_DEST}" 2>/dev/null || echo "NOT_FOUND")
-
-            if echo "$CURRENT" | grep -q '"sha"'; then
-              SHA=$(echo "$CURRENT" | python3 -c "import sys,json; print(json.load(sys.stdin)['sha'])")
-              CURRENT_CONTENT=$(echo "$CURRENT" | python3 -c "import sys,json; print(json.load(sys.stdin)['content'])" | tr -d '\n')
-
-              if [ "$CURRENT_CONTENT" = "$CONTENT" ]; then
-                echo "  ⏭  Sin cambios — saltando ${repo}"
-                SKIPPED=$((SKIPPED + 1))
-                continue
-              fi
-
-              if [ "$DRY_RUN" = "true" ]; then
-                echo "  [DRY RUN] Actualizaría ${WORKFLOW_DEST} en ${repo}"
-                UPDATED=$((UPDATED + 1))
-                continue
-              fi
-
-              gh api "repos/${ORG}/${repo}/contents/${WORKFLOW_DEST}" \
-                -X PUT \
-                -f message="ci: sync validate-branch-flow from governance [skip ci]" \
-                -f content="$CONTENT" \
-                -f sha="$SHA" > /dev/null && {
-                  echo "  ✓ Actualizado: ${repo}"
-                  UPDATED=$((UPDATED + 1))
-                } || {
-                  echo "  ✗ Error actualizando: ${repo}"
-                  FAILED=$((FAILED + 1))
-                }
-            else
-              if [ "$DRY_RUN" = "true" ]; then
-                echo "  [DRY RUN] Crearía ${WORKFLOW_DEST} en ${repo}"
-                UPDATED=$((UPDATED + 1))
-                continue
-              fi
-
-              gh api "repos/${ORG}/${repo}/contents/${WORKFLOW_DEST}" \
-                -X PUT \
-                -f message="ci: add validate-branch-flow from governance [skip ci]" \
-                -f content="$CONTENT" > /dev/null && {
-                  echo "  ✓ Creado: ${repo}"
-                  UPDATED=$((UPDATED + 1))
-                } || {
-                  echo "  ✗ Error creando en: ${repo}"
-                  FAILED=$((FAILED + 1))
-                }
+            if [ ! -f "$WORKFLOW_SOURCE" ]; then
+              echo "⚠️  Archivo fuente no encontrado: ${WORKFLOW_SOURCE} — saltando"
+              continue
             fi
+
+            CONTENT=$(base64 < "$WORKFLOW_SOURCE" | tr -d '\n')
+            UPDATED=0
+            SKIPPED=0
+            FAILED=0
+
+            echo ""
+            echo "━━━ Sincronizando: ${workflow} ━━━"
+
+            for repo in "${REPOS[@]}"; do
+              echo ""
+              echo "→ ${repo}"
+
+              CURRENT=$(gh api "repos/${ORG}/${repo}/contents/${WORKFLOW_DEST}" 2>/dev/null || echo "NOT_FOUND")
+
+              if echo "$CURRENT" | grep -q '"sha"'; then
+                SHA=$(echo "$CURRENT" | python3 -c "import sys,json; print(json.load(sys.stdin)['sha'])")
+                CURRENT_CONTENT=$(echo "$CURRENT" | python3 -c "import sys,json; print(json.load(sys.stdin)['content'])" | tr -d '\n')
+
+                if [ "$CURRENT_CONTENT" = "$CONTENT" ]; then
+                  echo "  ⏭  Sin cambios"
+                  SKIPPED=$((SKIPPED + 1))
+                  continue
+                fi
+
+                if [ "$DRY_RUN" = "true" ]; then
+                  echo "  [DRY RUN] Actualizaría ${workflow} en ${repo}"
+                  UPDATED=$((UPDATED + 1))
+                  continue
+                fi
+
+                gh api "repos/${ORG}/${repo}/contents/${WORKFLOW_DEST}" \
+                  -X PUT \
+                  -f message="ci: sync ${workflow} from governance [skip ci]" \
+                  -f content="$CONTENT" \
+                  -f sha="$SHA" > /dev/null && {
+                    echo "  ✓ Actualizado"
+                    UPDATED=$((UPDATED + 1))
+                  } || {
+                    echo "  ✗ Error actualizando"
+                    FAILED=$((FAILED + 1))
+                  }
+              else
+                if [ "$DRY_RUN" = "true" ]; then
+                  echo "  [DRY RUN] Crearía ${workflow} en ${repo}"
+                  UPDATED=$((UPDATED + 1))
+                  continue
+                fi
+
+                gh api "repos/${ORG}/${repo}/contents/${WORKFLOW_DEST}" \
+                  -X PUT \
+                  -f message="ci: add ${workflow} from governance [skip ci]" \
+                  -f content="$CONTENT" > /dev/null && {
+                    echo "  ✓ Creado"
+                    UPDATED=$((UPDATED + 1))
+                  } || {
+                    echo "  ✗ Error creando"
+                    FAILED=$((FAILED + 1))
+                  }
+              fi
+            done
+
+            TOTAL_UPDATED=$((TOTAL_UPDATED + UPDATED))
+            TOTAL_SKIPPED=$((TOTAL_SKIPPED + SKIPPED))
+            TOTAL_FAILED=$((TOTAL_FAILED + FAILED))
           done
 
           echo ""
           echo "═══════════════════════════════════"
           echo "  Resumen de sincronización"
           echo "═══════════════════════════════════"
-          echo "  Actualizados : ${UPDATED}"
-          echo "  Sin cambios  : ${SKIPPED}"
-          echo "  Fallidos     : ${FAILED}"
+          echo "  Actualizados : ${TOTAL_UPDATED}"
+          echo "  Sin cambios  : ${TOTAL_SKIPPED}"
+          echo "  Fallidos     : ${TOTAL_FAILED}"
           echo "═══════════════════════════════════"
 
-          if [ "$FAILED" -gt 0 ]; then
+          if [ "$TOTAL_FAILED" -gt 0 ]; then
             exit 1
           fi

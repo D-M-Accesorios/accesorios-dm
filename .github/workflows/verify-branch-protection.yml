@@ -1,0 +1,186 @@
+name: Verify Branch Protection Integrity
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'  # Lunes 9 AM UTC — revisión semanal
+  workflow_dispatch:
+
+jobs:
+  verify-protection:
+    name: verify-branch-protection
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check branch protection on all service repos
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.ORG_ADMIN_TOKEN }}
+          ORG: ${{ vars.GITHUB_ORG }}
+        run: |
+          REPOS=(
+            "accesorios-dm-api-gateway"
+            "accesorios-dm-database"
+            "accesorios-dm-inventory-service"
+            "accesorios-dm-payment-service"
+            "accesorios-dm-security-service"
+            "accesorios-dm-frontend"
+          )
+          BRANCHES=("main" "qa" "develop")
+          ISSUES=0
+          REPORT=""
+
+          for repo in "${REPOS[@]}"; do
+            for branch in "${BRANCHES[@]}"; do
+              PROTECTION=$(gh api \
+                "repos/${ORG}/${repo}/branches/${branch}/protection" \
+                2>/dev/null || echo "NOT_PROTECTED")
+
+              if [ "$PROTECTION" = "NOT_PROTECTED" ]; then
+                MSG="🚨 SIN PROTECCIÓN: ${repo}/${branch}"
+                echo "$MSG"
+                REPORT="${REPORT}\n- ${MSG}"
+                ISSUES=$((ISSUES + 1))
+                continue
+              fi
+
+              # Verificar enforce_admins
+              ENFORCE=$(echo "$PROTECTION" | \
+                python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('enforce_admins',{}).get('enabled','false'))" 2>/dev/null || echo "false")
+
+              # Verificar required status checks
+              STATUS_CHECKS=$(echo "$PROTECTION" | \
+                python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+checks=d.get('required_status_checks',{}).get('checks',[])
+names=[c.get('context','') for c in checks]
+print('validate-branch-flow' in names)
+" 2>/dev/null || echo "False")
+
+              # Verificar allow_force_pushes
+              FORCE_PUSH=$(echo "$PROTECTION" | \
+                python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('allow_force_pushes',{}).get('enabled','false'))" 2>/dev/null || echo "false")
+
+              BRANCH_OK=true
+
+              if [ "$ENFORCE" != "True" ] && [ "$ENFORCE" != "true" ]; then
+                MSG="⚠️  enforce_admins=false en ${repo}/${branch}"
+                echo "$MSG"
+                REPORT="${REPORT}\n- ${MSG}"
+                ISSUES=$((ISSUES + 1))
+                BRANCH_OK=false
+              fi
+
+              if [ "$STATUS_CHECKS" != "True" ]; then
+                MSG="⚠️  validate-branch-flow no configurado como required check en ${repo}/${branch}"
+                echo "$MSG"
+                REPORT="${REPORT}\n- ${MSG}"
+                ISSUES=$((ISSUES + 1))
+                BRANCH_OK=false
+              fi
+
+              if [ "$FORCE_PUSH" = "True" ] || [ "$FORCE_PUSH" = "true" ]; then
+                MSG="🚨 allow_force_pushes=true en ${repo}/${branch}"
+                echo "$MSG"
+                REPORT="${REPORT}\n- ${MSG}"
+                ISSUES=$((ISSUES + 1))
+                BRANCH_OK=false
+              fi
+
+              if [ "$BRANCH_OK" = true ]; then
+                echo "  ✅ ${repo}/${branch}"
+              fi
+            done
+          done
+
+          echo ""
+          echo "issues_count=$ISSUES" >> "$GITHUB_OUTPUT"
+          {
+            echo "report<<__EOF__"
+            printf "%b" "$REPORT"
+            echo ""
+            echo "__EOF__"
+          } >> "$GITHUB_OUTPUT"
+
+          if [ "$ISSUES" -gt 0 ]; then
+            echo "════════════════════════════════════════"
+            echo "  $ISSUES configuración(es) incorrecta(s)"
+            echo "════════════════════════════════════════"
+          else
+            echo "✅ Todas las branch protections están correctamente configuradas."
+          fi
+
+      - name: Check org member privileges
+        id: check-org
+        env:
+          GH_TOKEN: ${{ secrets.ORG_ADMIN_TOKEN }}
+          ORG: ${{ vars.GITHUB_ORG }}
+        run: |
+          CAN_DELETE=$(gh api "orgs/${ORG}" \
+            --jq '.members_can_delete_repositories' 2>/dev/null || echo "unknown")
+
+          echo "can_delete=$CAN_DELETE" >> "$GITHUB_OUTPUT"
+
+          if [ "$CAN_DELETE" = "true" ]; then
+            echo "🚨 ALERTA: members_can_delete_repositories=true — debe estar false"
+            echo "   Ir a: https://github.com/organizations/${ORG}/settings/member_privileges"
+          else
+            echo "✅ Org: members_can_delete_repositories=false"
+          fi
+
+      - name: Open issue if violations found
+        if: |
+          steps.check.outputs.issues_count != '0' ||
+          steps.check-org.outputs.can_delete == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TIMESTAMP=$(date -u '+%Y-%m-%d %H:%M UTC')
+          REPORT="${{ steps.check.outputs.report }}"
+          ORG_STATUS="${{ steps.check-org.outputs.can_delete == 'true' && '🚨 members_can_delete_repositories está HABILITADO' || '✅ OK' }}"
+
+          gh issue create \
+            --repo "${{ github.repository }}" \
+            --title "⚠️ [DRIFT] Branch protection degradada — ${TIMESTAMP}" \
+            --label "security,drift-detection" \
+            --body "## Detección de drift en configuración de seguridad
+
+          **Detectado:** ${TIMESTAMP}
+          **Workflow:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          ### Configuraciones incorrectas
+
+          \`\`\`
+          ${REPORT}
+          \`\`\`
+
+          ### Estado org settings
+          - Repository deletion: ${ORG_STATUS}
+
+          ### Acciones requeridas
+
+          - [ ] Ejecutar \`setup-branch-protection.sh\` para restaurar las protecciones
+          - [ ] Verificar quién modificó la configuración en el audit log
+          - [ ] Confirmar que \`enforce_admins=true\` en todas las ramas protegidas
+          - [ ] Documentar la causa del drift en este issue
+          " 2>/dev/null || echo "Issue ya existe o sin permisos para crear issues."
+
+      - name: Alert on Slack if violations found
+        if: |
+          steps.check.outputs.issues_count != '0' ||
+          steps.check-org.outputs.can_delete == 'true'
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "⚠️ Branch protection drift detectado en D-M-Accesorios",
+              "attachments": [{
+                "color": "warning",
+                "title": "Configuraciones de seguridad degradadas",
+                "text": "${{ steps.check.outputs.issues_count }} problema(s) detectado(s). Ver: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+                "footer": "verify-branch-protection | D-M-Accesorios"
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

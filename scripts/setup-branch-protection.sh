@@ -36,9 +36,10 @@ REPOS=(
   "accesorios-dm-frontend"
 )
 
-# Nombre exacto del job en validate-branch-flow.yml
+# Nombres exactos de los jobs en los workflows de validación
 # GitHub registra el check como el job id del workflow
-STATUS_CHECK_NAME="validate-branch-flow"
+STATUS_CHECK_FLOW="validate-branch-flow"
+STATUS_CHECK_COMMITS="validate-commits"
 
 echo ""
 echo -e "${CYAN}╔══════════════════════════════════════════════════════════╗${NC}"
@@ -47,7 +48,7 @@ echo -e "${CYAN}╚════════════════════�
 echo ""
 echo -e "  Organización : ${ORG}"
 echo -e "  Modo         : $( [ "$DRY_RUN" = "true" ] && echo "${YELLOW}SIMULACIÓN (DRY RUN)${NC}" || echo "${GREEN}APLICANDO CAMBIOS${NC}" )"
-echo -e "  Status check : ${STATUS_CHECK_NAME}"
+echo -e "  Status checks: ${STATUS_CHECK_FLOW}, ${STATUS_CHECK_COMMITS}"
 echo ""
 
 # Verificar autenticación
@@ -77,7 +78,11 @@ apply_protection() {
     "strict": true,
     "checks": [
       {
-        "context": "${STATUS_CHECK_NAME}",
+        "context": "${STATUS_CHECK_FLOW}",
+        "app_id": -1
+      },
+      {
+        "context": "${STATUS_CHECK_COMMITS}",
         "app_id": -1
       }
     ]
@@ -156,9 +161,10 @@ if [ "$DRY_RUN" != "true" ] && [ "$TOTAL_OK" -gt 0 ]; then
   echo ""
   echo -e "  ${YELLOW}Pasos siguientes:${NC}"
   echo ""
-  echo -e "  1. Verificar que el check '${STATUS_CHECK_NAME}' aparece en los PRs:"
+  echo -e "  1. Verificar que los checks aparecen en los PRs:"
+  echo -e "     Checks requeridos: '${STATUS_CHECK_FLOW}' y '${STATUS_CHECK_COMMITS}'"
   echo -e "     Crear un PR de prueba con una rama inválida (ej: test-rama → develop)"
-  echo -e "     El check debe aparecer y fallar automáticamente."
+  echo -e "     Ambos checks deben aparecer. El de flujo debe fallar automáticamente."
   echo ""
   echo -e "  2. Activar CODEOWNERS en GitHub:"
   echo -e "     Ir a cada repo → Settings → Branches → main → Edit"

@@ -1,0 +1,142 @@
+name: Validate Conventional Commits
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - develop
+      - qa
+      - main
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  validate-commits:
+    name: validate-commits
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate conventional commit messages
+        id: validate
+        run: |
+          set -euo pipefail
+
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+
+          # Formato: type(scope): description
+          # type obligatorio, scope opcional
+          PATTERN="^(feat|fix|chore|docs|test|refactor|style|ci|perf|revert)(\(.+\))?: .+"
+
+          INVALID=0
+          REPORT=""
+
+          while IFS= read -r SHA; do
+            MSG=$(git log -1 --format="%s" "$SHA")
+            SHORT="${SHA:0:7}"
+
+            if echo "$MSG" | grep -qE "$PATTERN"; then
+              echo "  ✅ [$SHORT] $MSG"
+            else
+              echo "  ⚠️  [$SHORT] $MSG"
+              INVALID=$((INVALID + 1))
+              REPORT="${REPORT}\n- \`${SHORT}\`: ${MSG}"
+            fi
+          done < <(git log --format="%H" "$BASE".."$HEAD")
+
+          echo "invalid_count=$INVALID" >> "$GITHUB_OUTPUT"
+          {
+            echo "report<<__EOF__"
+            printf "%b" "$REPORT"
+            echo ""
+            echo "__EOF__"
+          } >> "$GITHUB_OUTPUT"
+
+          if [ "$INVALID" -gt 0 ]; then
+            echo ""
+            echo "❌ $INVALID commit(s) no siguen el formato de Conventional Commits."
+            echo "   Formato: type(scope): description"
+            echo ""
+            echo "   El merge quedará bloqueado hasta corregir los commits."
+            exit 1
+          else
+            echo ""
+            echo "✅ Todos los commits siguen el formato Conventional Commits."
+          fi
+
+      - name: Comment on PR if commits are non-conventional
+        if: steps.validate.outputs.invalid_count != '0'
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const report = `${{ steps.validate.outputs.report }}`;
+            const count  = `${{ steps.validate.outputs.invalid_count }}`;
+
+            const marker = '<!-- conventional-commits-bot -->';
+            const body = `## ⚠️ Commits no convencionales detectados
+
+            ${count} commit(s) en este PR no siguen el formato [Conventional Commits](https://www.conventionalcommits.org/).
+
+            ### Commits a revisar
+            ${report}
+
+            ### Formato requerido
+
+            \`\`\`
+            type(scope): descripción breve
+            \`\`\`
+
+            | Type | Uso |
+            |------|-----|
+            | \`feat\` | Nueva funcionalidad |
+            | \`fix\` | Corrección de bug |
+            | \`chore\` | Configuración, dependencias |
+            | \`docs\` | Documentación |
+            | \`test\` | Tests |
+            | \`refactor\` | Refactorización sin cambio de funcionalidad |
+            | \`style\` | Formato, espacios (sin cambio lógico) |
+            | \`ci\` | Pipelines CI/CD |
+            | \`perf\` | Mejoras de rendimiento |
+            | \`revert\` | Revertir commit previo |
+
+            **Ejemplos válidos:**
+            - \`feat(auth): agregar validación JWT en middleware\`
+            - \`fix(payments): corregir cálculo de impuestos para Colombia\`
+            - \`chore: actualizar dependencias de Spring Boot a 3.2.1\`
+
+            > 🔒 Este check es requerido. El merge permanecerá bloqueado hasta que todos los commits sigan el formato Conventional Commits.
+
+            ${marker}`;
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const existing = comments.find(c =>
+              c.user.type === 'Bot' && c.body.includes('conventional-commits-bot')
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner:      context.repo.owner,
+                repo:       context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner:        context.repo.owner,
+                repo:         context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }

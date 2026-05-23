@@ -9,7 +9,8 @@ on:
       - main
 
 permissions:
-  pull-requests: read
+  pull-requests: write
+  contents: read
 
 jobs:
   validate-branch-flow:
@@ -117,9 +118,11 @@ MARKDOWN
             main)
               if [ "$HEAD" = "qa" ]; then
                 echo "✅ Flujo válido: qa → main"
+              elif echo "$HEAD" | grep -qE "^hotfix/.+"; then
+                echo "✅ Flujo válido: ${HEAD} → main (HOTFIX — requiere 2 approvals)"
               else
                 VALID=false
-                TITLE="❌ Flujo de ramas inválido — solo \`qa\` puede hacer PR a \`main\`"
+                TITLE="❌ Flujo de ramas inválido — solo \`qa\` o \`hotfix/*\` pueden hacer PR a \`main\`"
                 BODY=$(cat <<MARKDOWN
 ## ❌ Flujo de ramas inválido
 
@@ -135,6 +138,10 @@ Para hacer un release a \`main\` debes:
 1. Asegurarte de que los cambios están probados en \`qa\`
 2. Crear un PR desde \`qa\` → \`main\`
 
+Para emergencias en producción, usa el flujo de hotfix:
+1. Crea una rama \`hotfix/descripcion-del-fix\` desde \`main\`
+2. Crea un PR desde \`hotfix/*\` → \`main\`
+
 ### Flujos permitidos
 
 | Origen | Destino | Estado |
@@ -142,9 +149,10 @@ Para hacer un release a \`main\` debes:
 | \`HU-*\` | \`develop\` | ✅ Permitido |
 | \`develop\` | \`qa\` | ✅ Permitido |
 | \`qa\` | \`main\` | ✅ Permitido |
+| \`hotfix/*\` | \`main\` | ✅ Permitido (emergencias) |
 | \`${HEAD}\` | \`main\` | ❌ Bloqueado |
 
-> 🔒 El merge permanecerá bloqueado hasta que el PR sea \`qa\` → \`main\`.
+> 🔒 El merge permanecerá bloqueado hasta que el PR sea \`qa\` → \`main\` o \`hotfix/*\` → \`main\`.
 MARKDOWN
 )
               fi
@@ -169,7 +177,7 @@ MARKDOWN
 
       - name: Comment on PR if flow is invalid
         if: steps.evaluate.outputs.valid == 'false'
-        continue-on-error: true   # falla silenciosa si la org tiene write permissions deshabilitado
+        continue-on-error: true
         uses: actions/github-script@v7
         with:
           script: |
@@ -204,6 +212,28 @@ MARKDOWN
               });
             }
 
+      - name: Apply label to invalid PR
+        if: steps.evaluate.outputs.valid == 'false'
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            try {
+              await github.rest.issues.createLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: 'invalid-flow',
+                color: 'FF0000',
+                description: 'PR does not follow the required branch flow'
+              });
+            } catch (_) {}
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ['invalid-flow']
+            });
+
       - name: Fail job if flow is invalid
         if: steps.evaluate.outputs.valid == 'false'
         run: |
@@ -215,8 +245,9 @@ MARKDOWN
           echo "  Destino: ${{ github.base_ref }}"
           echo ""
           echo "  Flujos permitidos:"
-          echo "    HU-*    → develop"
-          echo "    develop → qa"
-          echo "    qa      → main"
+          echo "    HU-*     → develop"
+          echo "    develop  → qa"
+          echo "    qa       → main"
+          echo "    hotfix/* → main  (emergencias)"
           echo "=============================================="
           exit 1

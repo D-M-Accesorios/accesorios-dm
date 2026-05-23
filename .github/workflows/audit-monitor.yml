@@ -33,7 +33,8 @@ jobs:
           EVENTS=""
           for action in repo.destroy repo.transfer repo.archived org.remove_member; do
             result=$(gh api \
-              "orgs/${ORG}/audit-log?phrase=action:${action}&per_page=25" \
+              "orgs/${ORG}/audit-log?phrase=action:${action}&per_page=100" \
+              --paginate \
               --jq "[.[] | select(.created_at > ${SINCE_MS})]" 2>/dev/null || echo "[]")
             if [ "$result" != "[]" ] && [ -n "$result" ]; then
               EVENTS="${EVENTS}${result}"

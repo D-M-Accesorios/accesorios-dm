@@ -13,14 +13,14 @@ El sistema Accesorios DM es una plataforma de e-commerce en fase **MVP activo**,
 
 **Stack general:**
 
-| Capa | Tecnología | Madurez |
-|---|---|---|
-| API Gateway | Node.js / Express | Producción-ready |
-| Inventory | Java 17 / Spring Boot 3.5 | Producción-ready |
-| Security | Python 3.11 / FastAPI | Beta (bugs críticos de seguridad) |
-| Payment | Node.js / Prisma 5.22 | Beta (sin transacciones) |
-| Base de Datos | PostgreSQL 16 / Liquibase | Producción-ready |
-| Frontend | Angular | En desarrollo inicial |
+| Capa          | Tecnología                | Madurez                           |
+| ------------- | ------------------------- | --------------------------------- |
+| API Gateway   | Node.js / Express         | Producción-ready                  |
+| Inventory     | Java 17 / Spring Boot 3.5 | Producción-ready                  |
+| Security      | Python 3.11 / FastAPI     | Beta (bugs críticos de seguridad) |
+| Payment       | Node.js / Prisma 5.22     | Beta (sin transacciones)          |
+| Base de Datos | PostgreSQL 16 / Liquibase | Producción-ready                  |
+| Frontend      | Angular                   | En desarrollo inicial             |
 
 ### 1.2 Fortalezas
 
@@ -37,17 +37,17 @@ El sistema Accesorios DM es una plataforma de e-commerce en fase **MVP activo**,
 
 ### 1.3 Riesgos Críticos
 
-| Riesgo | Severidad | ADR Relacionado |
-|---|---|---|
-| SHA-256 con salt estático para contraseñas | **CRÍTICO** | ADR-022 |
-| `SECRET_KEY` JWT con valor hardcodeado como fallback | **CRÍTICO** | ADR-002 |
-| Doble descuento de stock por triggers + código de app | **CRÍTICO** | ADR-006 |
-| Creación de pedidos sin transacción ACID | **ALTO** | ADR-019 |
-| RLS de PostgreSQL definido pero no activo | **ALTO** | ADR-015 |
-| `authRateLimit` definido pero no aplicado en rutas | **ALTO** | ADR-003 |
-| Debug prints en código de producción (tokens JWT expuestos) | **MEDIO** | ADR-002/020 |
-| `allow_origins=["*"]` en Security Service CORS | **MEDIO** | ADR-002 |
-| Número de WhatsApp hardcodeado en código | **BAJO** | ADR-007 |
+| Riesgo                                                      | Severidad   | ADR Relacionado |
+| ----------------------------------------------------------- | ----------- | --------------- |
+| SHA-256 con salt estático para contraseñas                  | **CRÍTICO** | ADR-022         |
+| `SECRET_KEY` JWT con valor hardcodeado como fallback        | **CRÍTICO** | ADR-002         |
+| Doble descuento de stock por triggers + código de app       | **CRÍTICO** | ADR-006         |
+| Creación de pedidos sin transacción ACID                    | **ALTO**    | ADR-019         |
+| RLS de PostgreSQL definido pero no activo                   | **ALTO**    | ADR-015         |
+| `authRateLimit` definido pero no aplicado en rutas          | **ALTO**    | ADR-003         |
+| Debug prints en código de producción (tokens JWT expuestos) | **MEDIO**   | ADR-002/020     |
+| `allow_origins=["*"]` en Security Service CORS              | **MEDIO**   | ADR-002         |
+| Número de WhatsApp hardcodeado en código                    | **BAJO**    | ADR-007         |
 
 ### 1.4 Deuda Técnica Identificada
 
@@ -81,43 +81,43 @@ El sistema Accesorios DM es una plataforma de e-commerce en fase **MVP activo**,
 
 ### Behavioral ADRs (Comportamiento en Tiempo de Ejecución)
 
-| ID | Título | Prioridad | Impacto |
-|---|---|---|---|
-| [ADR-001](behavioral/ADR-001-api-gateway-single-entry-point.md) | API Gateway como único punto de entrada | Alta | Alto |
-| [ADR-002](behavioral/ADR-002-jwt-hs256-authentication.md) | Autenticación JWT HS256 con Security Service | **Crítica** | Crítico |
-| [ADR-003](behavioral/ADR-003-environment-aware-rate-limiting.md) | Rate Limiting diferenciado por ambiente | Media | Medio |
-| [ADR-004](behavioral/ADR-004-multienv-port-strategy.md) | Estrategia de puertos por ambiente | Media | Medio |
-| [ADR-005](behavioral/ADR-005-synchronous-http-inter-service-communication.md) | Comunicación sincrónica HTTP entre servicios | Alta | Alto |
-| [ADR-006](behavioral/ADR-006-stock-update-via-database-triggers.md) | Actualización de stock via triggers de BD | **Crítica** | Crítico |
-| [ADR-007](behavioral/ADR-007-whatsapp-payment-confirmation.md) | WhatsApp como canal de confirmación de pago | Baja | Bajo |
-| [ADR-008](behavioral/ADR-008-health-check-endpoints.md) | Health check endpoints en todos los servicios | Media | Medio |
-| [ADR-009](behavioral/ADR-009-centralized-structured-logging.md) | Logging estructurado centralizado en Gateway | Media | Medio |
+| ID                                                                            | Título                                        | Prioridad   | Impacto |
+| ----------------------------------------------------------------------------- | --------------------------------------------- | ----------- | ------- |
+| [ADR-001](behavioral/ADR-001-api-gateway-single-entry-point.md)               | API Gateway como único punto de entrada       | Alta        | Alto    |
+| [ADR-002](behavioral/ADR-002-jwt-hs256-authentication.md)                     | Autenticación JWT HS256 con Security Service  | **Crítica** | Crítico |
+| [ADR-003](behavioral/ADR-003-environment-aware-rate-limiting.md)              | Rate Limiting diferenciado por ambiente       | Media       | Medio   |
+| [ADR-004](behavioral/ADR-004-multienv-port-strategy.md)                       | Estrategia de puertos por ambiente            | Media       | Medio   |
+| [ADR-005](behavioral/ADR-005-synchronous-http-inter-service-communication.md) | Comunicación sincrónica HTTP entre servicios  | Alta        | Alto    |
+| [ADR-006](behavioral/ADR-006-stock-update-via-database-triggers.md)           | Actualización de stock via triggers de BD     | **Crítica** | Crítico |
+| [ADR-007](behavioral/ADR-007-whatsapp-payment-confirmation.md)                | WhatsApp como canal de confirmación de pago   | Baja        | Bajo    |
+| [ADR-008](behavioral/ADR-008-health-check-endpoints.md)                       | Health check endpoints en todos los servicios | Media       | Medio   |
+| [ADR-009](behavioral/ADR-009-centralized-structured-logging.md)               | Logging estructurado centralizado en Gateway  | Media       | Medio   |
 
 ### Structural ADRs (Estructura y Organización del Sistema)
 
-| ID | Título | Prioridad | Impacto |
-|---|---|---|---|
-| [ADR-010](structural/ADR-010-polyglot-microservices-architecture.md) | Arquitectura de microservicios políglota | Alta | Alto |
-| [ADR-011](structural/ADR-011-shared-postgresql-schema-isolation.md) | BD PostgreSQL compartida con schemas | Alta | Alto |
-| [ADR-012](structural/ADR-012-liquibase-database-migrations.md) | Liquibase para migraciones de BD | Alta | Alto |
-| [ADR-013](structural/ADR-013-polyrepo-strategy.md) | Estrategia Polyrepo por servicio | Media | Medio |
-| [ADR-014](structural/ADR-014-docker-shared-network-deployment.md) | Docker con red compartida externa | Alta | Alto |
-| [ADR-015](structural/ADR-015-postgresql-row-level-security.md) | Row Level Security de PostgreSQL | **Crítica** | Crítico |
-| [ADR-016](structural/ADR-016-local-filesystem-image-storage.md) | Almacenamiento de imágenes en filesystem local | Baja | Medio |
+| ID                                                                   | Título                                         | Prioridad   | Impacto |
+| -------------------------------------------------------------------- | ---------------------------------------------- | ----------- | ------- |
+| [ADR-010](structural/ADR-010-polyglot-microservices-architecture.md) | Arquitectura de microservicios políglota       | Alta        | Alto    |
+| [ADR-011](structural/ADR-011-shared-postgresql-schema-isolation.md)  | BD PostgreSQL compartida con schemas           | Alta        | Alto    |
+| [ADR-012](structural/ADR-012-liquibase-database-migrations.md)       | Liquibase para migraciones de BD               | Alta        | Alto    |
+| [ADR-013](structural/ADR-013-polyrepo-strategy.md)                   | Estrategia Polyrepo por servicio               | Media       | Medio   |
+| [ADR-014](structural/ADR-014-docker-shared-network-deployment.md)    | Docker con red compartida externa              | Alta        | Alto    |
+| [ADR-015](structural/ADR-015-postgresql-row-level-security.md)       | Row Level Security de PostgreSQL               | **Crítica** | Crítico |
+| [ADR-016](structural/ADR-016-local-filesystem-image-storage.md)      | Almacenamiento de imágenes en filesystem local | Baja        | Medio   |
 
 ### Design ADRs (Diseño Interno de Componentes)
 
-| ID | Título | Prioridad | Impacto |
-|---|---|---|---|
-| [ADR-017](design/ADR-017-layered-architecture-inventory-service.md) | Arquitectura en capas en Inventory Service | Alta | Alto |
-| [ADR-018](design/ADR-018-dto-pattern-api-contract-decoupling.md) | Patrón DTO para desacoplamiento | Media | Medio |
-| [ADR-019](design/ADR-019-prisma-orm-multischema-payment.md) | Prisma ORM multi-schema en Payment Service | **Alta** | Crítico |
-| [ADR-020](design/ADR-020-fastapi-sqlalchemy-dependency-injection.md) | FastAPI + SQLAlchemy + DI en Security Service | Alta | Alto |
-| [ADR-021](design/ADR-021-jpa-hibernate-ddl-validate.md) | JPA/Hibernate con ddl-auto=validate | Media | Alto |
-| [ADR-022](design/ADR-022-sha256-password-hashing.md) | SHA-256 con salt estático para contraseñas | **Crítica** | Crítico |
-| [ADR-023](design/ADR-023-35-performance-indexes-strategy.md) | Estrategia de 35 índices de rendimiento | Media | Alto |
-| [ADR-024](design/ADR-024-analytical-views-reporting-layer.md) | 10 vistas SQL para reportes analíticos | Media | Medio |
-| [ADR-025](design/ADR-025-cross-domain-8-schemas-data-model.md) | Modelo de datos en 8 schemas de dominio | Alta | Alto |
+| ID                                                                   | Título                                        | Prioridad   | Impacto |
+| -------------------------------------------------------------------- | --------------------------------------------- | ----------- | ------- |
+| [ADR-017](design/ADR-017-layered-architecture-inventory-service.md)  | Arquitectura en capas en Inventory Service    | Alta        | Alto    |
+| [ADR-018](design/ADR-018-dto-pattern-api-contract-decoupling.md)     | Patrón DTO para desacoplamiento               | Media       | Medio   |
+| [ADR-019](design/ADR-019-prisma-orm-multischema-payment.md)          | Prisma ORM multi-schema en Payment Service    | **Alta**    | Crítico |
+| [ADR-020](design/ADR-020-fastapi-sqlalchemy-dependency-injection.md) | FastAPI + SQLAlchemy + DI en Security Service | Alta        | Alto    |
+| [ADR-021](design/ADR-021-jpa-hibernate-ddl-validate.md)              | JPA/Hibernate con ddl-auto=validate           | Media       | Alto    |
+| [ADR-022](design/ADR-022-sha256-password-hashing.md)                 | SHA-256 con salt estático para contraseñas    | **Crítica** | Crítico |
+| [ADR-023](design/ADR-023-35-performance-indexes-strategy.md)         | Estrategia de 35 índices de rendimiento       | Media       | Alto    |
+| [ADR-024](design/ADR-024-analytical-views-reporting-layer.md)        | 10 vistas SQL para reportes analíticos        | Media       | Medio   |
+| [ADR-025](design/ADR-025-cross-domain-8-schemas-data-model.md)       | Modelo de datos en 8 schemas de dominio       | Alta        | Alto    |
 
 ---
 
@@ -143,16 +143,16 @@ La nota baja no refleja la calidad del diseño estructural (que es sólido, ~8/1
 
 ### 4.2 Nivel de Madurez por Dimensión
 
-| Dimensión | Calificación | Comentario |
-|---|---|---|
-| Arquitectura general | 8/10 | Decisiones sólidas y bien justificadas |
-| Seguridad | 4/10 | SHA-256 inseguro, RLS inactivo, secrets hardcodeados |
-| Integridad de datos | 5/10 | Doble descuento de stock, sin transacciones en Payment |
-| Observabilidad | 5/10 | Logging básico, sin correlation ID, sin métricas |
-| Testing | 3/10 | Sin tests unitarios ni de integración activos |
-| Operabilidad | 7/10 | Docker bien configurado, healthchecks, multiambiente |
-| Escalabilidad | 6/10 | Bien para una instancia; limitado para horizontalizar |
-| Documentación | 8/10 | READMEs completos, CLAUDE.md, ADRs |
+| Dimensión            | Calificación | Comentario                                             |
+| -------------------- | ------------ | ------------------------------------------------------ |
+| Arquitectura general | 8/10         | Decisiones sólidas y bien justificadas                 |
+| Seguridad            | 4/10         | SHA-256 inseguro, RLS inactivo, secrets hardcodeados   |
+| Integridad de datos  | 5/10         | Doble descuento de stock, sin transacciones en Payment |
+| Observabilidad       | 5/10         | Logging básico, sin correlation ID, sin métricas       |
+| Testing              | 3/10         | Sin tests unitarios ni de integración activos          |
+| Operabilidad         | 7/10         | Docker bien configurado, healthchecks, multiambiente   |
+| Escalabilidad        | 6/10         | Bien para una instancia; limitado para horizontalizar  |
+| Documentación        | 8/10         | READMEs completos, CLAUDE.md, ADRs                     |
 
 ### 4.3 Riesgos Técnicos Críticos (Prioridad de Corrección)
 
@@ -192,4 +192,4 @@ La nota baja no refleja la calidad del diseño estructural (que es sólido, ~8/1
 
 ---
 
-*Todos los ADRs están basados exclusivamente en evidencia encontrada en el código fuente, configuraciones, dependencias y documentación de los repositorios de DmApp.*
+_Todos los ADRs están basados exclusivamente en evidencia encontrada en el código fuente, configuraciones, dependencias y documentación de los repositorios de DmApp._

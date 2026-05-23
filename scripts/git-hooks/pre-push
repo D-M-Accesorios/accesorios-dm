@@ -1,0 +1,55 @@
+#!/bin/bash
+# pre-push hook — valida el flujo de ramas antes de hacer push
+# Instalación: bash scripts/install-hooks.sh (desde la raíz del repo)
+
+set -euo pipefail
+
+CURRENT_BRANCH=$(git symbolic-ref HEAD 2>/dev/null | sed 's|refs/heads/||')
+HU_PATTERN='^HU-[A-Z0-9]'
+
+while read LOCAL_REF LOCAL_SHA REMOTE_REF REMOTE_SHA; do
+  # Ignorar si es un delete push (sha de ceros)
+  if [ "$LOCAL_SHA" = "0000000000000000000000000000000000000000" ]; then
+    continue
+  fi
+
+  TARGET=$(echo "$REMOTE_REF" | sed 's|refs/heads/||')
+
+  # Bloquear push directo a main y qa
+  if [[ "$TARGET" == "main" || "$TARGET" == "qa" ]]; then
+    echo ""
+    echo "════════════════════════════════════════════"
+    echo "  ❌ PUSH DIRECTO BLOQUEADO"
+    echo "════════════════════════════════════════════"
+    echo "  Destino: $TARGET"
+    echo "  Motivo:  Solo merges vía Pull Request"
+    echo ""
+    echo "  Flujo obligatorio:"
+    echo "    HU-*  →  develop  →  qa  →  main"
+    echo "════════════════════════════════════════════"
+    echo ""
+    exit 1
+  fi
+
+  # Para develop: solo ramas HU-* pueden hacer push
+  if [[ "$TARGET" == "develop" ]]; then
+    if ! echo "$CURRENT_BRANCH" | grep -qE "$HU_PATTERN"; then
+      echo ""
+      echo "════════════════════════════════════════════"
+      echo "  ❌ PUSH A DEVELOP BLOQUEADO"
+      echo "════════════════════════════════════════════"
+      echo "  Rama actual: $CURRENT_BRANCH"
+      echo "  Motivo:      Solo ramas HU-* pueden"
+      echo "               hacer push a develop"
+      echo ""
+      echo "  Renombra tu rama:"
+      echo "  git branch -m HU-DEV-INICIALES-descripcion"
+      echo "════════════════════════════════════════════"
+      echo ""
+      exit 1
+    fi
+  fi
+
+done
+
+exit 0
