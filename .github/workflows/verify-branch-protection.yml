@@ -16,7 +16,7 @@ jobs:
         id: check
         env:
           GH_TOKEN: ${{ secrets.ORG_ADMIN_TOKEN }}
-          ORG: ${{ vars.GITHUB_ORG }}
+          ORG: ${{ vars.ORG_NAME }}
         run: |
           REPOS=(
             "accesorios-dm-api-gateway"
@@ -115,7 +115,7 @@ print('validate-branch-flow' in names)
         id: check-org
         env:
           GH_TOKEN: ${{ secrets.ORG_ADMIN_TOKEN }}
-          ORG: ${{ vars.GITHUB_ORG }}
+          ORG: ${{ vars.ORG_NAME }}
         run: |
           CAN_DELETE=$(gh api "orgs/${ORG}" \
             --jq '.members_can_delete_repositories' 2>/dev/null || echo "unknown")

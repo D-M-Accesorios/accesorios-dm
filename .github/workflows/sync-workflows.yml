@@ -28,7 +28,7 @@ jobs:
       - name: Sync validate-branch-flow.yml to all service repos
         env:
           GH_TOKEN: ${{ secrets.ORG_ADMIN_TOKEN }}
-          ORG: ${{ vars.GITHUB_ORG }}
+          ORG: ${{ vars.ORG_NAME }}
           DRY_RUN: ${{ inputs.dry_run }}
           TARGET_REPO: ${{ inputs.target_repo }}
         run: |

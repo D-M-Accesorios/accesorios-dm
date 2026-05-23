@@ -16,7 +16,7 @@ jobs:
         id: audit
         env:
           GH_TOKEN: ${{ secrets.ORG_AUDIT_TOKEN }}
-          ORG: ${{ vars.GITHUB_ORG }}
+          ORG: ${{ vars.ORG_NAME }}
         run: |
           # Ventana de tiempo: últimos 35 minutos (cubre overlap entre ejecuciones)
           WINDOW_SECONDS=2100
@@ -65,7 +65,7 @@ jobs:
               "attachments": [{
                 "color": "danger",
                 "title": "Acción requerida inmediatamente",
-                "text": "Se detectaron uno o más eventos de alto riesgo en la organización GitHub.\n\nVerificar el audit log completo en: https://github.com/organizations/${{ vars.GITHUB_ORG }}/settings/audit-log\n\nWorkflow de detección: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+                "text": "Se detectaron uno o más eventos de alto riesgo en la organización GitHub.\n\nVerificar el audit log completo en: https://github.com/organizations/${{ vars.ORG_NAME }}/settings/audit-log\n\nWorkflow de detección: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
                 "footer": "audit-monitor | D-M-Accesorios"
               }]
             }
@@ -95,7 +95,7 @@ jobs:
 
           ### Acciones inmediatas
 
-          - [ ] Verificar el audit log completo en GitHub: https://github.com/organizations/${{ vars.GITHUB_ORG }}/settings/audit-log
+          - [ ] Verificar el audit log completo en GitHub: https://github.com/organizations/${{ vars.ORG_NAME }}/settings/audit-log
           - [ ] Confirmar si la acción fue autorizada
           - [ ] Si fue no autorizada: revocar acceso del actor inmediatamente
           - [ ] Si fue eliminación de repo: iniciar restauración desde backup

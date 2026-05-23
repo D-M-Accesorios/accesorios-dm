@@ -21,7 +21,7 @@ jobs:
         id: list-repos
         env:
           GH_TOKEN: ${{ secrets.ORG_BACKUP_TOKEN }}
-          ORG: ${{ vars.GITHUB_ORG }}
+          ORG: ${{ vars.ORG_NAME }}
         run: |
           echo "Listando repositorios de la organización: ${ORG}"
           gh api "orgs/${ORG}/repos?per_page=100&type=all" \

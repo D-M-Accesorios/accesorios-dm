@@ -184,7 +184,7 @@ if [ "$DRY_RUN" != "true" ] && [ "$TOTAL_OK" -gt 0 ]; then
   echo -e "     ORG_AUDIT_TOKEN   — PAT con scope: read:audit_log (para audit monitor)"
   echo -e "     ORG_ADMIN_TOKEN   — PAT con scope: repo, workflow (para sync)"
   echo -e "     SLACK_WEBHOOK_URL — Webhook de Slack para notificaciones"
-  echo -e "     GITHUB_ORG        — Variable (no secret): D-M-Accesorios"
+  echo -e "     ORG_NAME          — Variable (no secret): D-M-Accesorios"
 fi
 
 if [ "$TOTAL_FAIL" -gt 0 ]; then
